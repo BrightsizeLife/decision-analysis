@@ -128,13 +128,33 @@ export default function App() {
     window.scrollTo(0, 0)
   }
 
-  const exportProject = () => {
+  const exportProject = async () => {
     if (!project) return
-    const blob = new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' })
+    const json = JSON.stringify(project, null, 2)
+    const filename = `${project.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'decision'}.json`
+    // Sandboxed hosts (like the claude.ai artifact viewer) block anchor
+    // downloads but mediate saves through a runtime API instead.
+    const rt = (
+      window as {
+        claude?: { use?: (n: string) => Promise<{ save: (r: { filename: string; data: string }) => Promise<unknown> } | null> }
+      }
+    ).claude
+    if (rt?.use) {
+      try {
+        const downloads = await rt.use('downloads')
+        if (downloads) {
+          await downloads.save({ filename, data: json })
+          return
+        }
+      } catch {
+        return // viewer declined or the save prompt failed — don't also fire a blocked anchor
+      }
+    }
+    const blob = new Blob([json], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${project.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'decision'}.json`
+    a.download = filename
     a.click()
     URL.revokeObjectURL(url)
   }
